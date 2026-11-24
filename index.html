@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视译转录工具（纯浏览器版）</title>
+<style>
+  :root {
+    --bg: #f5f7fb; --card: #fff; --ink: #1f2937; --muted: #6b7280;
+    --accent: #4f6ef7; --accent-2: #7c5cf6; --border: #e5e7eb;
+    --ok: #10b981; --err: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--ink); min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 20px 32px; color: #fff;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header p { font-size: 13px; opacity: .85; margin-top: 4px; }
+  main {
+    flex: 1; display: grid; grid-template-columns: 1fr 1fr 1.3fr;
+    gap: 20px; padding: 24px 32px; align-items: start;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,.04);
+  }
+  .step { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .step .num {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    background: var(--accent); color: #fff; font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step h2 { font-size: 16px; }
+
+  #drop {
+    border: 2px dashed #c7d2fe; border-radius: 12px; padding: 36px 16px;
+    text-align: center; cursor: pointer; transition: all .2s; color: var(--muted);
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: #eef2ff; color: var(--accent); }
+  #drop .icon { font-size: 34px; margin-bottom: 8px; }
+  #drop .hint { font-size: 12px; margin-top: 6px; }
+  #fileInfo {
+    margin-top: 14px; font-size: 13px; background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 8px; padding: 10px 12px; display: none;
+  }
+  #player { width: 100%; margin-top: 12px; display: none; }
+
+  .field { margin-bottom: 18px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .seg button {
+    flex: 1; padding: 10px 4px; border: none; background: #fff; cursor: pointer;
+    font-size: 13px; color: var(--muted); transition: all .15s; border-right: 1px solid var(--border);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button.active { background: var(--accent); color: #fff; font-weight: 600; }
+  .seg button small { display: block; font-size: 11px; margin-top: 2px; opacity: .8; }
+  select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: 14px; background: #fff; outline: none;
+  }
+  select:focus { border-color: var(--accent); }
+  .range-row { display: flex; align-items: center; gap: 10px; }
+  .range-row input { flex: 1; accent-color: var(--accent); }
+  .range-row .val { min-width: 52px; text-align: center; font-size: 13px; font-weight: 600; color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .tip { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  #startBtn {
+    width: 100%; margin-top: 6px; padding: 13px; border: none; border-radius: 10px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity .2s;
+  }
+  #startBtn:disabled { opacity: .5; cursor: not-allowed; }
+  #status { margin-top: 12px; font-size: 13px; text-align: center; color: var(--muted); min-height: 34px; line-height: 1.5; }
+  #status.err { color: var(--err); }
+  #status.ok { color: var(--ok); }
+  #dlbar { width: 100%; height: 6px; background: #e5e7eb; border-radius: 3px; margin-top: 8px; display: none; }
+  #dlbar > div { height: 100%; width: 0; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .3s; }
+
+  #resultWrap { display: flex; flex-direction: column; min-height: 420px; }
+  #empty {
+    flex: 1; display: flex; align-items: center; justify-content: center; color: #9ca3af;
+    font-size: 14px; border: 2px dashed var(--border); border-radius: 12px;
+    padding: 40px; text-align: center;
+  }
+  #text {
+    flex: 1; width: 100%; min-height: 340px; resize: vertical; display: none;
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+    font-size: 14px; line-height: 1.8; outline: none; font-family: inherit;
+  }
+  #text:focus { border-color: var(--accent); }
+  .result-bar { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: #fff; font-size: 13px; cursor: pointer; transition: all .15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  #meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+  #copied { color: var(--ok); font-size: 13px; display: none; }
+  .banner {
+    margin: 0 32px; margin-top: -14px; margin-bottom: -10px; padding: 10px 16px;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    font-size: 12px; color: #92400e;
+  }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>视译录音转录工具</h1>
+  <p>纯浏览器本地运行 · 无需服务器 · 保留语气词与口误 · 长停顿自动标注省略号</p>
+</header>
+
+<main>
+  <!-- 左栏：上传 -->
+  <section class="card">
+    <div class="step"><span class="num">1</span><h2>上传音频</h2></div>
+    <div id="drop">
+      <div class="icon">🎧</div>
+      <div>点击选择或拖拽音频文件到此处</div>
+      <div class="hint">支持 mp3 / m4a / wav / flac 等常见格式</div>
+    </div>
+    <input type="file" id="file" accept="audio/*" hidden>
+    <div id="fileInfo"></div>
+    <audio id="player" controls></audio>
+  </section>
+
+  <!-- 中栏：设置 -->
+  <section class="card">
+    <div class="step"><span class="num">2</span><h2>转录设置</h2></div>
+
+    <div class="field">
+      <label>视译方向</label>
+      <div class="seg" id="direction">
+        <button data-v="zh" class="active">英译中 E-C<small>转写中文译文</small></button>
+        <button data-v="en">中译英 C-E<small>转写英文译文</small></button>
+        <button data-v="auto">自动检测<small>不确定源语时使用</small></button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>模型精度（首次使用需下载到浏览器）</label>
+      <select id="model">
+        <option value="onnx-community/whisper-small" selected>small — 推荐，较准确（约 250MB）</option>
+        <option value="onnx-community/whisper-base">base — 快速（约 80MB）</option>
+        <option value="onnx-community/whisper-tiny">tiny — 极快，精度较低（约 45MB）</option>
+      </select>
+      <div class="tip" id="gpuTip">正在检测浏览器加速能力…</div>
+    </div>
+
+    <div class="field">
+      <label>停顿判定阈值</label>
+      <div class="range-row">
+        <input type="range" id="pause" min="0.5" max="5" step="0.5" value="2">
+        <span class="val" id="pauseVal">2.0 秒</span>
+      </div>
+      <div class="tip">相邻语音片段间隔超过该时长时自动插入「……」（停顿越久省略号越多）。</div>
+    </div>
+
+    <div class="field">
+      <label class="check"><input type="checkbox" id="timestamps"> 在文本中显示时间戳</label>
+    </div>
+
+    <button id="startBtn" disabled>开始转录</button>
+    <div id="status"></div>
+    <div id="dlbar"><div></div></div>
+  </section>
+
+  <!-- 右栏：结果 -->
+  <section class="card" id="resultWrap">
+    <div class="step"><span class="num">3</span><h2>转录结果（可直接编辑与复制）</h2></div>
+    <div id="empty">转录完成后，文本将显示在这里<br>可直接在此编辑、复制</div>
+    <textarea id="text" spellcheck="false"></textarea>
+    <div class="result-bar">
+      <button class="btn primary" id="copyBtn">复制全文</button>
+      <button class="btn" id="downloadTxt">下载 .txt</button>
+      <button class="btn" id="downloadSrt">下载 .srt 字幕</button>
+      <span id="copied">✓ 已复制到剪贴板</span>
+      <span id="meta"></span>
+    </div>
+    <textarea id="srtData" hidden></textarea>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let file = null, direction = "zh", srtText = "", running = false;
+
+// ---------- Web Worker（内置，模型在后台线程运行，界面不卡顿） ----------
+const workerCode = `
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.1';
+env.remoteHost = 'https://hf-mirror.com';   // 国内镜像，避免连不上 Hugging Face
+
+let transcriber = null, currentModel = null;
+
+self.onmessage = async (e) => {
+  const msg = e.data;
+  try {
+    if (msg.type === 'load') {
+      if (transcriber && currentModel === msg.model) { self.postMessage({type:'ready', model: msg.model}); return; }
+      const opts = { progress_callback: p => self.postMessage({type:'progress', data: p}) };
+      if (msg.gpu) {
+        opts.device = 'webgpu';
+        opts.dtype = { encoder_model: 'fp32', decoder_model_merged: 'q4' };
+        try {
+          transcriber = await pipeline('automatic-speech-recognition', msg.model, opts);
+          currentModel = msg.model;
+          self.postMessage({type:'ready', model: msg.model, device: 'webgpu'});
+          return;
+        } catch (err) {
+          transcriber = null;
+          self.postMessage({type:'fallback'});
+        }
+      }
+      transcriber = await pipeline('automatic-speech-recognition', msg.model, {
+        device: 'wasm', dtype: 'q8',
+        progress_callback: p => self.postMessage({type:'progress', data: p})
+      });
+      currentModel = msg.model;
+      self.postMessage({type:'ready', model: msg.model, device: 'wasm'});
+    }
+    else if (msg.type === 'run') {
+      if (!transcriber) throw new Error('模型尚未加载');
+      const out = await transcriber(msg.audio, {
+        language: msg.language || undefined,
+        return_timestamps: true,
+        chunk_length_s: 30,
+        stride_length_s: 5,
+      });
+      self.postMessage({type:'result', data: out});
+    }
+  } catch (err) {
+    self.postMessage({type:'error', error: err.message || String(err)});
+  }
+};
+`;
+const worker = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })), { type: 'module' });
+
+// ---------- 音频解码 + 重采样到 16kHz ----------
+async function loadAudio(file) {
+  const buf = await file.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await ctx.decodeAudioData(buf);
+  let data;
+  if (decoded.numberOfChannels > 1) {          // 多声道混为单声道
+    const chans = [];
+    for (let c = 0; c < decoded.numberOfChannels; c++) chans.push(decoded.getChannelData(c));
+    data = new Float32Array(decoded.length);
+    for (let i = 0; i < decoded.length; i++) {
+      let s = 0;
+      for (const ch of chans) s += ch[i];
+      data[i] = s / chans.length;
+    }
+  } else data = decoded.getChannelData(0);
+
+  // 线性插值重采样到 16kHz
+  const target = 16000, ratio = decoded.sampleRate / target;
+  const outLen = Math.floor(data.length / ratio);
+  const resampled = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const pos = i * ratio, lo = Math.floor(pos), hi = Math.min(lo + 1, data.length - 1);
+    resampled[i] = data[lo] + (data[hi] - data[lo]) * (pos - lo);
+  }
+  ctx.close();
+  return resampled;
+}
+
+// ---------- UI 逻辑 ----------
+const drop = $("drop"), fileInput = $("file");
+drop.onclick = () => fileInput.click();
+fileInput.onchange = () => setFile(fileInput.files[0]);
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); setFile(e.dataTransfer.files[0]); };
+
+function setFile(f) {
+  if (!f) return;
+  file = f;
+  $("fileInfo").style.display = "block";
+  $("fileInfo").textContent = "已选择：" + f.name + "（" + (f.size / 1048576).toFixed(1) + " MB）";
+  $("player").src = URL.createObjectURL(f);
+  $("player").style.display = "block";
+  $("startBtn").disabled = false;
+}
+
+$("direction").addEventListener("click", e => {
+  const btn = e.target.closest("button"); if (!btn) return;
+  direction = btn.dataset.v;
+  [...$("direction").children].forEach(b => b.classList.toggle("active", b === btn));
+});
+
+$("pause").oninput = e => $("pauseVal").textContent = parseFloat(e.target.value).toFixed(1) + " 秒";
+
+// WebGPU 检测
+const hasGPU = !!navigator.gpu;
+$("gpuTip").textContent = hasGPU
+  ? "✓ 检测到 WebGPU 加速（Chrome/Edge），速度更快"
+  : "当前浏览器无 WebGPU，将使用 CPU（较慢），建议选 base 或 tiny 模型";
+
+// 进度显示
+const dlFiles = {};
+function onProgress(p) {
+  if (p.status === "progress" && p.file && p.total) {
+    dlFiles[p.file] = p.progress;
+    const vals = Object.values(dlFiles);
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    $("dlbar").style.display = "block";
+    $("dlbar").firstElementChild.style.width = avg + "%";
+    $("status").textContent = "正在下载模型（首次使用）…" + avg.toFixed(0) + "%，完成后会自动开始转录";
+  }
+}
+
+function fmtTs(sec, comma) {
+  sec = Math.max(0, sec || 0);
+  const ms = Math.round(sec * 1000);
+  const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000),
+        s = Math.floor(ms % 60000 / 1000), r = ms % 1000;
+  const pad = (n, w) => String(n).padStart(w, "0");
+  return pad(h, 2) + ":" + pad(m, 2) + ":" + pad(s, 2) + (comma ? "," : ".") + pad(r, 3);
+}
+
+function buildOutput(chunks, pause, showTs) {
+  const parts = [];
+  let prevEnd = null, n = 0;
+  const srt = [];
+  for (const c of chunks) {
+    const [st, en] = c.timestamp || [null, null];
+    const text = (c.text || "").trim();
+    if (!text) { if (en != null) prevEnd = en; continue; }
+    if (prevEnd != null && st != null && st - prevEnd >= pause) {
+      const gap = st - prevEnd;
+      parts.push("……".repeat(Math.max(1, Math.floor(gap / (pause + 1)) + 1)));
+    }
+    parts.push(showTs && st != null ? "[" + fmtTs(st, false) + "] " + text : text);
+    n++;
+    srt.push(n + "\n" + fmtTs(st, true) + " --> " + fmtTs(en != null ? en : st, true) + "\n" + text + "\n");
+    if (en != null) prevEnd = en;
+  }
+  return { text: parts.join("\n"), srt: srt.join("\n"), n };
+}
+
+$("startBtn").onclick = async () => {
+  if (!file || running) return;
+  running = true;
+  const btn = $("startBtn"), st = $("status");
+  btn.disabled = true;
+  st.className = "";
+  st.textContent = "正在解码音频…";
+  $("dlbar").style.display = "none";
+
+  try {
+    const audio = await loadAudio(file);
+    const model = $("model").value;
+
+    st.textContent = "正在加载模型…";
+    worker.postMessage({ type: "load", model, gpu: hasGPU });
+    const ready = await new Promise((resolve, reject) => {
+      const handler = e => {
+        const m = e.data;
+        if (m.type === "ready") { worker.removeEventListener("message", handler); resolve(m.device); }
+        else if (m.type === "error") { worker.removeEventListener("message", handler); reject(new Error(m.error)); }
+        else if (m.type === "progress") onProgress(m.data);
+        else if (m.type === "fallback") st.textContent = "WebGPU 启动失败，已回退到 CPU 模式…";
+      };
+      worker.addEventListener("message", handler);
+    });
+
+    st.textContent = (ready === "webgpu" ? "GPU 加速中" : "CPU 模式（较慢）") + "，正在转录，请耐心等待…";
+    const t0 = performance.now();
+    worker.postMessage({ type: "run", audio, language: direction === "auto" ? null : direction,
+                         pause: parseFloat($("pause").value) });
+    const out = await new Promise((resolve, reject) => {
+      const handler = e => {
+        const m = e.data;
+        if (m.type === "result") { worker.removeEventListener("message", handler); resolve(m.data); }
+        else if (m.type === "error") { worker.removeEventListener("message", handler); reject(new Error(m.error)); }
+      };
+      worker.addEventListener("message", handler);
+    });
+
+    const secs = (performance.now() - t0) / 1000;
+    const result = buildOutput(out.chunks || [], parseFloat($("pause").value), $("timestamps").checked);
+    srtText = result.srt;
+    $("empty").style.display = "none";
+    const ta = $("text");
+    ta.style.display = "block";
+    ta.value = result.text;
+    $("meta").textContent = result.n + " 段 · 耗时 " + Math.round(secs) + " 秒";
+    st.className = "ok";
+    st.textContent = "✓ 转录完成（结果仅保存在本机，不上传任何数据）";
+  } catch (err) {
+    st.className = "err";
+    st.textContent = "✗ " + err.message;
+  } finally {
+    $("dlbar").style.display = "none";
+    btn.disabled = false;
+    running = false;
+  }
+};
+
+// 复制与下载
+$("copyBtn").onclick = async () => {
+  const text = $("text").value;
+  if (!text) return;
+  try { await navigator.clipboard.writeText(text); }
+  catch { $("text").select(); document.execCommand("copy"); }
+  const c = $("copied"); c.style.display = "inline";
+  setTimeout(() => c.style.display = "none", 2000);
+};
+function download(content, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+  a.download = name; a.click();
+}
+$("downloadTxt").onclick = () => { const t = $("text").value; if (t) download(t, "transcript.txt"); };
+$("downloadSrt").onclick = () => { if (srtText) download(srtText, "transcript.srt"); };
+</script>
+</body>
+</html>
